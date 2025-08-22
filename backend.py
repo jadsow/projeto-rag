@@ -1,38 +1,39 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+import os
 
 # Ferramentas do LangChain para a lógica RAG
 from langchain_chroma.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.chat_models import ChatOllama 
+# Importação corrigida para remover o aviso de depreciação
+from langchain_ollama import ChatOllama
 from langchain.prompts import ChatPromptTemplate
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.retrievers.multi_query import MultiQueryRetriever
-from fastapi.middleware.cors import CORSMiddleware
 
-import os
-
+# --- 1. CONFIGURAÇÃO INICIAL ---
 
 print("Backend iniciando...")
 print("Carregando o banco de dados vetorial e a cadeia RAG...")
 
+# Definição das constantes
 NOME_MODELO_EMBEDDING = "all-MiniLM-L6-v2"
 PASTA_DB = "db"
-NOME_MODELO_LLM_LOCAL = "llama3"
+NOME_MODELO_LLM_LOCAL = "llama3" # Para performance máxima em CPU, considere "phi3:mini"
 
 modelo_embedding = HuggingFaceEmbeddings(model_name=NOME_MODELO_EMBEDDING)
-
 db = Chroma(persist_directory=PASTA_DB, embedding_function=modelo_embedding)
 
-vector_db_retriever = db.as_retriever(search_kwargs={'k': 3})
 
 host_ollama = os.getenv("OLLAMA_HOST", "localhost")
-llm = ChatOllama(base_url=f"http://{host_ollama}:11434", model=NOME_MODELO_LLM_LOCAL)
-
-retriever = MultiQueryRetriever.from_llm(
-    retriever=vector_db_retriever, llm=llm
+llm = ChatOllama(
+    base_url=f"http://{host_ollama}:11434",
+    model=NOME_MODELO_LLM_LOCAL,
+    num_predict=150  
 )
+
+retriever = db.as_retriever(search_kwargs={'k': 3})
 
 
 template = """
@@ -45,8 +46,8 @@ Você é um assistente de IA especialista em análise de documentos. Sua missão
 
 ## HIERARQUIA DE RESPOSTA ##
 1.  Verifique se o contexto contém uma resposta direta e explícita para a pergunta. Se sim, forneça essa resposta, seguindo as Regras de Ouro.
-2.  Se não houver uma resposta direta, procure pela informação mais relevante no contexto. 
-3.  Se o contexto não tiver nenhuma informação relevante, responda EXATAMENTE com a frase: "Não tenho informações o suficiente para lhe responder."
+2.  Se não houver uma resposta direta, procure pela informação mais relevante no contexto e comece sua resposta EXATAMENTE com a frase: "Não encontrei uma resposta direta, mas aqui está uma informação relacionada:"
+3.  Se o contexto não tiver nenhuma informação relevante, responda EXATAMENTE com a frase: "Não encontrei informações sobre este tópico nos documentos."
 
 Suas instruções terminam aqui.
 </instrucoes>
@@ -57,7 +58,7 @@ Suas instruções terminam aqui.
 
 <pergunta>
 {input}
-</pergunta>
+</pergunta
 
 <resposta>
 """
@@ -77,18 +78,12 @@ app = FastAPI(
     version="1.0.0"
 )
 
-origins = [
-    "http://localhost:4200",  
-    "http://localhost",     
-    "*"                      
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,      
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],        
-    allow_headers=["*"],        
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 class Pergunta(BaseModel):
@@ -101,17 +96,14 @@ def perguntar_ao_rag(pergunta: Pergunta):
     """
     try:
         print(f"--- Recebida a pergunta: {pergunta.texto} ---")
-        
-        trechos_retornados = retriever.invoke(pergunta.texto)
-        
-        print("--- Contexto que será enviado ao LLM: ---")
-        for i, doc in enumerate(trechos_retornados):
-            print(f"Trecho {i+1}:")
-            print(doc.page_content) 
-            print("-" * 20)
-
 
         resultado = cadeia_rag.invoke({"input": pergunta.texto})
+
+        print("--- Contexto usado para gerar a resposta: ---")
+        for i, doc in enumerate(resultado.get("context", [])):
+             print(f"Trecho {i+1}:")
+             print(doc.page_content)
+             print("-" * 20)
         
         return {"resposta": resultado["answer"]}
     except Exception as e:
