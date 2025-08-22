@@ -1,0 +1,18 @@
+# Use a mesma imagem base do Python
+FROM python:3.11-slim
+
+# Defina o diretório de trabalho
+WORKDIR /app
+
+# Copie e instale os mesmos requisitos
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copie apenas o script do frontend
+COPY frontend.py .
+
+# Exponha a porta que o Streamlit usará
+EXPOSE 8501
+
+# O comando para rodar o frontend
+CMD ["streamlit", "run", "frontend.py", "--server.port=8501", "--server.address=0.0.0.0"]

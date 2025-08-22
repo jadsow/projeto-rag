@@ -1,0 +1,81 @@
+version: "3.8"
+
+services:
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  setup-ollama:
+    image: curlimages/curl:latest
+    depends_on:
+      - ollama
+    command: >
+      sh -c "
+        echo 'Esperando o Ollama ficar disponível...'
+        while ! curl -s http://ollama:11434/api/tags > /dev/null; do
+          sleep 1
+        done
+        echo 'Ollama está pronto.'
+
+        # Verifica se o modelo llama3 já existe
+        if curl -s http://ollama:11434/api/tags | grep -q 'llama3'; then
+          echo 'Modelo llama3 já existe.'
+        else
+          echo 'Baixando o modelo llama3...'
+          curl http://ollama:11434/api/pull -d '{\"name\": \"llama3\"}'
+          echo 'Download do llama3 concluído.'
+        fi
+      "
+
+  db-creator:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    volumes:
+      - ./db:/app/db
+    command: >
+      sh -c "
+        if [ -z \"$(ls -A /app/db)\" ]; then
+          echo 'Pasta DB está vazia. Rodando criar_db.py...'
+          python criar_db.py
+        else
+          echo 'Banco de dados já existe, pulando a criação.'
+        fi
+      "
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./db:/app/db
+    environment:
+      - OLLAMA_HOST=ollama
+    depends_on:
+      - setup-ollama
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - BACKEND_HOST=backend
+    depends_on:
+      - backend
+
+volumes:
+  ollama_data:

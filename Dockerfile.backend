@@ -1,0 +1,19 @@
+# Use uma imagem base oficial do Python
+FROM python:3.11-slim
+
+# Defina o diretório de trabalho dentro do contêiner
+WORKDIR /app
+
+# Copie o arquivo de requisitos e instale as dependências
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copie todos os arquivos do projeto para o contêiner
+# Isso inclui backend.py, criar_db.py e a pasta 'base/'
+COPY . .
+
+# Exponha a porta que a API usará
+EXPOSE 8000
+
+# O comando para rodar o backend quando o contêiner iniciar
+CMD ["uvicorn", "backend:app", "--host", "0.0.0.0", "--port", "8000"]
