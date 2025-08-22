@@ -28,11 +28,11 @@ db = Chroma(persist_directory=PASTA_DB, embedding_function=modelo_embedding)
 vector_db_retriever = db.as_retriever(search_kwargs={'k': 3})
 
 host_ollama = os.getenv("OLLAMA_HOST", "localhost")
-llm = ChatOllama(base_url=f"http://{host_ollama}:11434", model=NOME_MODELO_LLM_LOCAL, num_predict=150)
+llm = ChatOllama(base_url=f"http://{host_ollama}:11434", model=NOME_MODELO_LLM_LOCAL)
 
-# retriever = MultiQueryRetriever.from_llm(
-#     retriever=vector_db_retriever, llm=llm
-# )
+retriever = MultiQueryRetriever.from_llm(
+    retriever=vector_db_retriever, llm=llm
+)
 
 
 template = """
@@ -41,8 +41,7 @@ Você é um assistente de IA especialista em análise de documentos. Sua missão
 
 ## REGRAS DE OURO ##
 - **Seja Direto:** NUNCA mencione o contexto, o documento ou de onde você tirou a informação. Apenas forneça a resposta. Não use frases como "Baseado no contexto...", "O documento afirma que...".
-- **Seja preciso:** Mantenha suas respostas o mais breve possível, idealmente entre 1 a 3 frases.
-- **Se atente a resposta. Se a pessoa perguntou o que é uma coisa, não necessariamente você tem que iniciar a resposta com "Sim"
+- **Seja Conciso:** Mantenha suas respostas o mais breve possível, idealmente entre 1 a 3 frases.
 
 ## HIERARQUIA DE RESPOSTA ##
 1.  Verifique se o contexto contém uma resposta direta e explícita para a pergunta. Se sim, forneça essa resposta, seguindo as Regras de Ouro.
@@ -67,7 +66,7 @@ prompt = ChatPromptTemplate.from_template(template)
 
 combine_docs_chain = create_stuff_documents_chain(llm, prompt)
 
-cadeia_rag = create_retrieval_chain(vector_db_retriever, combine_docs_chain)
+cadeia_rag = create_retrieval_chain(retriever, combine_docs_chain)
 
 print("Backend pronto e aguardando requisições.")
 
